@@ -2,15 +2,15 @@
 
 |**Исходное состояние**|**Переходное состояние**|**Событие**|
 | :-: | :- | :- |
-| - | Процесс платежа запущен | CREATE_PAYMENT |
-| Процесс платежа запущен | Средства зарезервированны | HOLD_FUNDS |
-| Средства зарезервированны | Резервирование средств отменено | RELEASE_FUNDS |
-| Средства зарезервированы | Легальность операции проверена | ANTIFRAUD_AUTOCHECK |
-| Средства зарезервированы | Легальность операции проверена | ANTIFRAUD_MANUAL_CHECK |
-| Средства зарезервированы | Легальность операции проверена | ANTIFRAUD_TIMEOUT |
-| Легальность операции проверена | Средства переведены | TRANSFER_FUNDS |
-| Средства переведены | Средства возвращены | RETURN_FUNDS |
-| Смена статуса процесса | Плательщик уведомлён | SEND_NOTIFICATION_TO_USER |
-| Легальность операции проверена (операция определена как подозрительная) | Служба безопасности уведомлена | SEND_NOTIFICATION_TO_SECURITY |
-| Средства переведены | Процесс платежа завершен | COMPLETE_PAYMENT |
-| Средства переведены | Процесс оплаты отменён | CANCEL_PAYMENT |
+| - | Процесс платежа запущен</br>PAYMENT_STARTED | CREATE_PAYMENT |
+| Процесс платежа запущен</br>PAYMENT_STARTED | Средства зарезервированны</br>FUNDS_HELD | HOLD_FUNDS |
+| Средства зарезервированны</br>FUNDS_HELD | Резервирование средств отменено</br>FUNDS_RELEASED | RELEASE_FUNDS |
+| Средства зарезервированы</br>FUNDS_HELD | Легальность операции проверена</br>ANTIFRAUD_CHECKED/FROD_OPERATION_DETECTED | ANTIFRAUD_AUTOCHECK |
+| Средства зарезервированы</br>FUNDS_HELD | Легальность операции проверена</br>ANTIFRAUD_CHECKED/FROD_OPERATION_DETECTED | ANTIFRAUD_MANUAL_CHECK |
+| Средства зарезервированы</br>FUNDS_HELD | Легальность операции проверена</br>ANTIFRAUD_CHECKED/FROD_OPERATION_DETECTED | ANTIFRAUD_TIMEOUT |
+| Легальность операции проверена</br>ANTIFRAUD_CHECKED | Средства переведены</br>FUNDS_TRANSFERED | TRANSFER_FUNDS |
+| Средства переведены</br>FUNDS_TRANSFERED | Средства возвращены</br>FUNDS_RETURNED | RETURN_FUNDS |
+| Смена статуса процесса</br>PROCESS_STATUS_CHANGED | Плательщик уведомлён</br>PAYER_NOTIFIED | SEND_NOTIFICATION_TO_USER |
+| Легальность операции проверена (операция определена как подозрительная)</br>FROD_OPERATION_DETECTED | Служба безопасности уведомлена</br>SECURITY_NOTIFIED | SEND_NOTIFICATION_TO_SECURITY |
+| Средства переведены</br>FUNDS_TRANSFERED | Процесс платежа завершен</br>PAYMENT_PROCESS_COMPLETED | COMPLETE_PAYMENT |
+| Средства переведены</br>FUNDS_TRANSFERED | Процесс оплаты отменён</br>PAYMENT_PROCESS_CANCELED | CANCEL_PAYMENT |
