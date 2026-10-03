@@ -9,8 +9,8 @@
 | Средства зарезервированы</br>FUNDS_HELD | Легальность операции проверена</br>ANTIFRAUD_CHECKED/FROD_OPERATION_DETECTED | ANTIFRAUD_MANUAL_CHECK |
 | Средства зарезервированы</br>FUNDS_HELD | Легальность операции проверена</br>ANTIFRAUD_CHECKED/FROD_OPERATION_DETECTED | ANTIFRAUD_TIMEOUT |
 | Легальность операции проверена</br>ANTIFRAUD_CHECKED | Средства переведены</br>FUNDS_TRANSFERED | TRANSFER_FUNDS |
-| Средства переведены</br>FUNDS_TRANSFERED | Средства возвращены</br>FUNDS_RETURNED | RETURN_FUNDS |
 | Смена статуса процесса</br>PROCESS_STATUS_CHANGED | Плательщик уведомлён</br>PAYER_NOTIFIED | SEND_NOTIFICATION_TO_USER |
 | Легальность операции проверена (операция определена как подозрительная)</br>FROD_OPERATION_DETECTED | Служба безопасности уведомлена</br>SECURITY_NOTIFIED | SEND_NOTIFICATION_TO_SECURITY |
 | Средства переведены</br>FUNDS_TRANSFERED | Процесс платежа завершен</br>PAYMENT_PROCESS_COMPLETED | COMPLETE_PAYMENT |
-| Средства переведены</br>FUNDS_TRANSFERED | Процесс оплаты отменён</br>PAYMENT_PROCESS_CANCELED | CANCEL_PAYMENT |
+| Cредства переведены</br>FUNDS_TRANSFERED | Процесс оплаты отменён плательщиком</br>PAYMENT_PROCESS_CANCELED | CANCEL_PAYMENT |
+| Процесс оплаты отменён плательщиком</br>PAYMENT_PROCESS_CANCELED | Средства возвращены</br>FUNDS_RETURNED | RETURN_FUNDS |
