@@ -1,0 +1,21 @@
+name: zeebe-test
+
+# Camunda 8 (Zeebe) только для валидации BPMN диаграмм. 
+# Стартуем только Camunda без доменных сервисов, чтобы 
+# по-быстрому проверить каждая диаграмма:
+# 1) Развертывается в Camunda без ошибок модели
+# 2) Запускает экземпляр workflow при получении стартового сообщения
+
+services:
+  zeebe:
+    image: camunda/zeebe:8.5.0
+    container_name: zeebe
+    ports:
+      - "26500:26500"   # Zeebe gRPC Gateway для zbctl
+      - "9600:9600"     # Broker metrics/health
+    networks:
+      - zeebe-net
+
+networks:
+  zeebe-net:
+    name: zeebe-test-net

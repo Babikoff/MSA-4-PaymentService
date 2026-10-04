@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_PaymentSaga" targetNamespace="http://org.orchestrpay/payment-saga" exporter="Camunda Modeler" exporterVersion="5.51.1" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.5.0">
   <bpmn:message id="MessageStartPayment" name="START_PAYMENT" />
-  <bpmn:message id="MessageCancelHold" name="CANCEL_HOLD" />
+  <bpmn:message id="MessageCancelHold" name="CANCEL_HOLD">
+    <bpmn:extensionElements>
+      <zeebe:subscription correlationKey="=paymentId" />
+    </bpmn:extensionElements>
+  </bpmn:message>
   <bpmn:process id="PaymentSaga" name="Payment Saga" isExecutable="true">
     <bpmn:extensionElements>
       <zeebe:properties>
@@ -29,6 +33,10 @@
       <bpmn:incoming>FlowCreateToHold</bpmn:incoming>
       <bpmn:outgoing>FlowHoldToHoldCheck</bpmn:outgoing>
     </bpmn:serviceTask>
+    <bpmn:boundaryEvent id="BoundaryCancelHold" name="CANCEL_HOLD" attachedToRef="TaskHoldFunds">
+      <bpmn:outgoing>FlowCancelHoldToRelease</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MsgCancelHoldDef" messageRef="MessageCancelHold" />
+    </bpmn:boundaryEvent>
     <bpmn:exclusiveGateway id="GwHoldCheck" name="hold ok?" default="FlowHoldFailNotify">
       <bpmn:incoming>FlowHoldToHoldCheck</bpmn:incoming>
       <bpmn:outgoing>FlowHoldCheckToAntifraud</bpmn:outgoing>
@@ -228,14 +236,7 @@
     <bpmn:sequenceFlow id="FlowCancelFinishNotify" sourceRef="TaskFinishCancel" targetRef="TaskNotifyCancelHold" />
     <bpmn:sequenceFlow id="FlowCancelNotifyEnd" sourceRef="TaskNotifyCancelHold" targetRef="EndCanceledCancelHold" />
     <bpmn:sequenceFlow id="FlowTimeoutToTransfer" sourceRef="BoundaryTimeout" targetRef="TaskTransfer" />
-    <bpmn:intermediateCatchEvent id="BoundaryCancelHold" name="CANCEL_HOLD">
-      <bpmn:extensionElements>
-        <zeebe:subscription correlationKey="=paymentId" />
-      </bpmn:extensionElements>
-      <bpmn:outgoing>FlowCancelHoldToRelease</bpmn:outgoing>
-      <bpmn:messageEventDefinition id="MessageEventDefinition_1v1a8j7" messageRef="MessageCancelHold" />
-    </bpmn:intermediateCatchEvent>
-  </bpmn:process>
+    </bpmn:process>
   <bpmndi:BPMNDiagram id="BPMNDiagram_PaymentSaga">
     <bpmndi:BPMNPlane id="BPMNPlane_PaymentSaga" bpmnElement="PaymentSaga">
       <bpmndi:BPMNShape id="GwHoldCheck_di" bpmnElement="GwHoldCheck" isMarkerVisible="true">
