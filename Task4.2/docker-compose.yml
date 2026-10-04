@@ -107,11 +107,31 @@ services:
     networks:
       - camunda-platform
 
+  postgres:
+    image: postgres:17-alpine
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_POSTGRESPASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - camunda-platform
+
   deploy-process:
     build:
       context: ./deploy-process
     volumes:
-      - ./process.bpmn:/process.bpmn
+      - ./bpmn:/bpmn
     depends_on:
       zeebe:
         condition: service_healthy
@@ -121,9 +141,10 @@ services:
       "
       echo '⏳ Waiting for Zeebe...';
       until nc -z zeebe 26500; do sleep 5; done;
-      echo '🚀 Deploying BPMN process...';
-      zbctl deploy /process.bpmn --host zeebe --port 26500 --insecure;
-      echo '✅ Process deployed!';
+      echo '🚀 Deploying BPMN processes...';
+      zbctl deploy /bpmn/payment-saga.bpmn --host zeebe --port 26500 --insecure;
+      zbctl deploy /bpmn/cancel-payment.bpmn --host zeebe --port 26500 --insecure;
+      echo '✅ Processes deployed!';
       sleep 30;
       "
 
@@ -142,6 +163,7 @@ services:
 volumes:
   zeebe:
   elastic:
+  postgres:
 
 networks:
   camunda-platform:
