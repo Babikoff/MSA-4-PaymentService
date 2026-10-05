@@ -1,0 +1,6 @@
+@FraudCheckService_HostAddress = http://localhost:5241
+
+GET {{FraudCheckService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
