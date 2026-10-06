@@ -2,8 +2,12 @@
 
 # This stage is used when running from VS in fast mode (Default for Debug configuration)
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
+# curl is needed for the docker-compose healthcheck (image has no curl/wget).
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 USER $APP_UID
 WORKDIR /app
+# Listen on 3001 to match the docker-compose port mapping.
+ENV ASPNETCORE_HTTP_PORTS=3001
 EXPOSE 3001
 
 

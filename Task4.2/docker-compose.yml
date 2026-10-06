@@ -155,7 +155,7 @@ services:
     environment:
       - ConnectionStrings__Payments=Host=postgres;Port=5432;Database=paymentdb;Username=${POSTGRES_USER};Password=${POSTGRES_POSTGRESPASSWORD}
     healthcheck:
-      test: ["CMD-SHELL", "wget -O - -q 'http://localhost:3000/health'"]
+      test: ["CMD-SHELL", "curl -f -s http://localhost:3000/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -173,7 +173,7 @@ services:
     environment:
       - ConnectionStrings__Payments=Host=postgres;Port=5432;Database=fraudcheckdb;Username=${POSTGRES_USER};Password=${POSTGRES_POSTGRESPASSWORD}
     healthcheck:
-      test: ["CMD-SHELL", "wget -O - -q 'http://localhost:3001/health'"]
+      test: ["CMD-SHELL", "curl -f -s http://localhost:3001/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5

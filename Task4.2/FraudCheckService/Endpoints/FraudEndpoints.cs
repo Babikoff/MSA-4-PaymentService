@@ -7,7 +7,7 @@ namespace FraudCheckService.Endpoints;
 
 public static class FraudEndpoints
 {
-    public static void MapPaymentEndpoints(this WebApplication app)
+    public static void MapFraudEndpoints(this WebApplication app)
     {
         /* Нужно реализовать:
         POST	/api/fraud/checks	ANTIFRAUD_AUTOCHECK	Автопроверка. Идемпотентна (Idempotency-Key/paymentId:AUTOCHECK). Если платёж не передан в теле — тянет GET PaymentService /api/payments/{id} (enrichment, таймаут по F8). Возвращает FraudDecisionResponse
@@ -50,15 +50,17 @@ public static class FraudEndpoints
 
         try
         {
+            // The idempotency layer works on an existing case — ensure it first.
+            await rules.LoadOrCreateCaseAsync(req.PaymentId, req, ct);
+
             var outcome = await idem.ExecuteAsync<FraudDecisionResponse>(
                 IdemKey(http, req.PaymentId, FraudCheckType.AUTO.ToString()),
                 req.PaymentId,
                 "AUTOCHECK",
-                //() => rules.LoadOrCreateCaseAsync(paymentId, req, ct),
                 async c =>
                 {
-                    var resp = await rules.AutoCheckAsync(req, ct);
-                    return (true, resp);
+                    await rules.AutoCheckAsync(c, req, ct);
+                    return (true, ToResponse(c));
                 });
 
             logger.LogInformation("Auto-check {PaymentId} -> {Decision}.",
@@ -92,23 +94,20 @@ public static class FraudEndpoints
         {
             var outcome = await idem.ExecuteAsync<FraudDecisionResponse>(
                 IdemKey(http, paymentId, FraudCheckType.MANUAL.ToString()), paymentId, FraudCheckType.MANUAL.ToString(),
-                //() => rules.LoadCaseAsync(paymentId, ct), // нет проверки -> 404
                 async c =>
                 {
-                    var resp = await rules.ApplyManualDecisionAsync(req, ct);
-                    return (true, resp);
+                    // false -> already finalized with another decision (409).
+                    var ok = await rules.ApplyManualDecisionAsync(c, req, ct);
+                    return (ok, ToResponse(c));
                 });
-
-            //TODO: check
-            // if (!outcome.Success)
-            //     // Уже принято другое решение или нет ожидания ручной проверки.
-            //     return Results.Conflict(outcome.Data ??
-            //         new ErrorResponse("Decision already finalized or not awaiting manual check."));
 
             logger.LogInformation("Manual decision for {PaymentId}: {Decision} by {Operator}.",
                 paymentId, req.Decision, req.OperatorId);
 
-            return Results.Ok(outcome.Data);
+            // Conflict: stored decision differs from the requested one (409).
+            return !outcome.Success || outcome.Data?.Decision != req.Decision
+                ? Results.Conflict(outcome.Data)
+                : Results.Ok(outcome.Data);
         }
         catch (EntityNotFoundException)
         {

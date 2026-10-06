@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using System.Text.Json.Serialization;
+using Microsoft.EntityFrameworkCore;
 using FraudCheckService.Data;
 using FraudCheckService.Endpoints;
 using FraudCheckService.Services;
@@ -17,6 +18,11 @@ builder.Services.AddDbContext<FraudCheckDbContext>(o => o.UseNpgsql(conn));
 builder.Services.Configure<FraudOptions>(
     builder.Configuration.GetSection("FraudCheckServiceMocking"));
 
+// PaymentService использует String enums в JSON (ALLOW/BLOCK/MANUAL) - придётся конвертировать.
+//TODO: унифицировать формат данных с PaymentService
+builder.Services.ConfigureHttpJsonOptions(o =>
+    o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
 // Services.
 builder.Services.AddScoped<DbInitializer>();
 builder.Services.AddScoped<FraudRulesService>();
@@ -32,7 +38,7 @@ var app = builder.Build();
 // Health check (для установки docker-compose итд).
 app.MapGet("/health", () => Results.Ok("ok"));
 
-app.MapPaymentEndpoints();
+app.MapFraudEndpoints();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
@@ -41,7 +47,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// Ensure the paymentdb database + schema on startup (prototype).
+// Ensure the fraudcheckdb database + schema on startup (prototype).
 using (var scope = app.Services.CreateScope())
 {
     var init = scope.ServiceProvider.GetRequiredService<DbInitializer>();

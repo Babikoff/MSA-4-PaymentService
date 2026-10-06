@@ -58,7 +58,7 @@ public class IdempotencyService
         await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
 
         // Загрузка главной сущности 
-        var payment = await _db.Payments.FirstOrDefaultAsync(p => p.Id == paymentId);
+        var payment = await _db.Payments.FirstOrDefaultAsync(p => p.PaymentId == paymentId);
 
         // Если почему-то не найдена, то ошибка
         if (payment is null)

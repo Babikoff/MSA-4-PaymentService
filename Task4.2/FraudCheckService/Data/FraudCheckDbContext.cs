@@ -18,6 +18,7 @@ public class FraudCheckDbContext : DbContext
         modelBuilder.Entity<FraudCheckCase>(entity =>
         {
             entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.PaymentId).IsUnique();
             entity.Property(e => e.PayerId).HasMaxLength(64).IsRequired();
             entity.Property(e => e.CounterpartyId).HasMaxLength(64).IsRequired();
             entity.Property(e => e.Amount).IsRequired();
