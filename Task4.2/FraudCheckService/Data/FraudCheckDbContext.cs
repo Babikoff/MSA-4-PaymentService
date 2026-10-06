@@ -1,21 +1,21 @@
 using Microsoft.EntityFrameworkCore;
-using PaymentService.Domain;
+using FraudCheckService.Domain;
 
-namespace PaymentService.Data;
+namespace FraudCheckService.Data;
 
-public class PaymentDbContext : DbContext
+public class FraudCheckDbContext : DbContext
 {
-    public PaymentDbContext(DbContextOptions<PaymentDbContext> options)
+    public FraudCheckDbContext(DbContextOptions<FraudCheckDbContext> options)
         : base(options)
     {
     }
 
-    public DbSet<Payment> Payments => Set<Payment>();
+    public DbSet<FraudCheckCase> Payments => Set<FraudCheckCase>();
     public DbSet<OperationRecord> OperationRecords => Set<OperationRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder.Entity<Payment>(entity =>
+        modelBuilder.Entity<FraudCheckCase>(entity =>
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.PayerId).HasMaxLength(64).IsRequired();
