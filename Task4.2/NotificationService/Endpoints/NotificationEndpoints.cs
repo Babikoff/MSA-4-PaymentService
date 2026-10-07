@@ -17,7 +17,7 @@ public static class NotificationEndpoints
         [FromBody] NotifyUserRequest? r,
         ILogger<Program> logger)
     {
-        logger.LogTrace($"{DateTime.Now} PaymentId: {r?.PaymentId} RecipientId: {r?.RecipientId} EventType: {r?.EventType} " +
+        logger.LogInformation($"{DateTime.Now} PaymentId: {r?.PaymentId} RecipientId: {r?.RecipientId} EventType: {r?.EventType} " +
             $" PaymentStatus: {r?.PaymentStatus} Message: {r?.Message} Channel: {r?.Channel}"
         );
         await Task.Delay(0);
@@ -28,9 +28,9 @@ public static class NotificationEndpoints
         [FromBody] NotifySecurityRequest? r,
         ILogger<Program> logger)
     {
-        logger.LogTrace($"{DateTime.Now} PaymentId: {r?.PaymentId} RecipientId: {r?.RecipientId} EventType: {r?.EventType} " +
+        logger.LogInformation($"{DateTime.Now} PaymentId: {r?.PaymentId} RecipientId: {r?.RecipientId} EventType: {r?.EventType} " +
             $" PaymentStatus: {r?.PaymentStatus} Message: {r?.Message} RiskScore: {r?.RiskScore}" +
-            $" RuleHits: [{string.Join(';', r.RuleHits ?? [])}]"
+            $" RuleHits: [{string.Join(';', r?.RuleHits ?? [])}]"
         );
         await Task.Delay(0);
         return Results.Ok("Security notified");

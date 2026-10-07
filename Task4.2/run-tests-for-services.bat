@@ -5,13 +5,14 @@ chcp 65001 >nul
 cd /d "%~dp0"
 set "BASE=http://localhost:3000"
 set "FRBASE=http://localhost:3001"
+set "NBASE=http://localhost:3002"
 set "TMP=%TEMP%\task42_tests"
 if not exist "%TMP%" mkdir "%TMP%"
 set PASS=0
 set FAIL=0
 
 echo.
-echo 🏁 Регрессионный тест Task4.2 - Camunda 8 + Payment + FraudCheck Services
+echo 🏁 Регрессионный тест Payment + FraudCheck Services + Notifications
 echo.
 
 echo 🧪 Проверка окружения...
@@ -20,7 +21,7 @@ docker version >nul 2>&1
 if errorlevel 1 (call :fail "Docker не запущен") else call :pass "Docker запущен"
 
 docker compose ps -a --format "{{.Service}} {{.Status}}" > "%TMP%\svc.txt" 2>nul
-for %%s in (zeebe elasticsearch operate tasklist postgres payment-service fraud-check-service) do (
+for %%s in (postgres payment-service fraud-check-service notification-service) do (
     findstr /b /c:"%%s Up" "%TMP%\svc.txt" >nul
     if errorlevel 1 (call :fail "Сервис %%s не запущен") else call :pass "Сервис %%s запущен"
 )
@@ -58,6 +59,22 @@ goto after_fhealth
 :fhealth_ok
 call :pass "FraudCheckService /health отвечает"
 :after_fhealth
+
+echo 🧪 Ожидание NotificationService...
+set /a nw=0
+:wait_nhealth
+curl.exe -s -f "%NBASE%/health" >nul 2>&1
+if not errorlevel 1 goto nhealth_ok
+set /a nw+=1
+if !nw! geq 10 goto nhealth_timeout
+timeout /t 3 /nobreak >nul
+goto wait_nhealth
+:nhealth_timeout
+call :fail "NotificationService /health не отвечает"
+goto after_nhealth
+:nhealth_ok
+call :pass "NotificationService /health отвечает"
+:after_nhealth
 
 REM ============ CRUD и валидация ============
 echo.
@@ -293,6 +310,39 @@ REM Финальный статус ручной проверки зафикси
 docker exec postgres psql -U orchestrpay -d fraudcheckdb -t -A -c "SELECT \"Status\" FROM \"Payments\" WHERE \"PaymentId\"='%F2%'" > "%TMP%\fst.txt" 2>&1
 set /p FST=<"%TMP%\fst.txt"
 if "!FST!"=="FRAUD_OPERATION_DETECTED" (call :pass "Статус FraudCheck в БД: FRAUD_OPERATION_DETECTED") else call :fail "Статус FraudCheck в БД: !FST!, ожидался FRAUD_OPERATION_DETECTED"
+
+REM ============ NotificationService ============
+echo.
+echo 🧪 HTTP-тесты NotificationService...
+
+call :newid N1
+curl.exe -s -o "%TMP%\nu.txt" -w "%%{http_code}" -X POST "%NBASE%/api/notifications/user" -H "Content-Type: application/json" -d "{\"paymentId\":\"%N1%\",\"recipientId\":\"cust-n1\",\"eventType\":\"PAYER_NOTIFIED\",\"paymentStatus\":\"PAYMENT_PROCESS_COMPLETED\",\"message\":\"Payment completed\",\"channel\":\"PUSH\"}" > "%TMP%\nc.txt"
+set /p NC=<"%TMP%\nc.txt"
+if "!NC!"=="200" (call :pass "notify user PAYER_NOTIFIED: 200") else call :fail "notify user PAYER_NOTIFIED: ожидали 200, получили !NC!"
+findstr /C:"User notified" "%TMP%\nu.txt" >nul
+if errorlevel 1 (call :fail "notify user: тело ответа не содержит 'User notified'") else call :pass "notify user: тело 'User notified'"
+
+curl.exe -s -o "%TMP%\nu2.txt" -w "%%{http_code}" -X POST "%NBASE%/api/notifications/user" -H "Content-Type: application/json" -d "{\"paymentId\":\"%N1%\",\"recipientId\":\"cust-n1\",\"eventType\":\"PAYMENT_FAILED\",\"paymentStatus\":\"FAILED\",\"message\":\"Hold failed\",\"channel\":\"SMS\"}" > "%TMP%\nc2.txt"
+set /p NC2=<"%TMP%\nc2.txt"
+if "!NC2!"=="200" (call :pass "notify user PAYMENT_FAILED: 200") else call :fail "notify user PAYMENT_FAILED: ожидали 200, получили !NC2!"
+
+call :newid N2
+curl.exe -s -o "%TMP%\ns.txt" -w "%%{http_code}" -X POST "%NBASE%/api/notifications/security" -H "Content-Type: application/json" -d "{\"paymentId\":\"%N2%\",\"recipientId\":\"security\",\"eventType\":\"FRAUD_OPERATION_DETECTED\",\"paymentStatus\":\"FRAUD_OPERATION_DETECTED\",\"message\":\"Blocked by rules\",\"ruleHits\":[\"blacklist\",\"threshold\"],\"riskScore\":90}" > "%TMP%\nsc.txt"
+set /p SC=<"%TMP%\nsc.txt"
+if "!SC!"=="200" (call :pass "notify security: 200") else call :fail "notify security: ожидали 200, получили !SC!"
+findstr /C:"Security notified" "%TMP%\ns.txt" >nul
+if errorlevel 1 (call :fail "notify security: тело ответа не содержит 'Security notified'") else call :pass "notify security: тело 'Security notified'"
+
+curl.exe -s -o NUL -w "%%{http_code}" -X POST "%NBASE%/api/notifications/user" -H "Content-Type: application/json" -d "{broken" > "%TMP%\nbad.txt"
+set /p BC=<"%TMP%\nbad.txt"
+if "!BC!"=="400" (call :pass "битый JSON вернул 400") else call :fail "битый JSON: ожидали 400, получили !BC!"
+
+REM Сервис без БД - его "состояние" только в логах: проверяем grep'ом.
+docker compose logs --no-color notification-service > "%TMP%\ns.log" 2>&1
+findstr /C:"%N1%" "%TMP%\ns.log" >nul
+if errorlevel 1 (call :fail "Лог NotificationService не содержит paymentId %N1%") else call :pass "Уведомление пользователя попало в лог"
+findstr /C:"%N2%" "%TMP%\ns.log" >nul
+if errorlevel 1 (call :fail "Лог NotificationService не содержит paymentId %N2%") else call :pass "Уведомление в безопасность попало в лог"
 
 REM ============ Итог ============
 echo.
