@@ -54,7 +54,7 @@ public static class FraudEndpoints
             await rules.LoadOrCreateCaseAsync(req.PaymentId, req, ct);
 
             var outcome = await idem.ExecuteAsync<FraudDecisionResponse>(
-                IdemKey(http, req.PaymentId, FraudCheckType.AUTO.ToString()),
+                IdemKey(http, req.PaymentId, "AUTOCHECK"),
                 req.PaymentId,
                 "AUTOCHECK",
                 async c =>
@@ -93,7 +93,7 @@ public static class FraudEndpoints
         try
         {
             var outcome = await idem.ExecuteAsync<FraudDecisionResponse>(
-                IdemKey(http, paymentId, FraudCheckType.MANUAL.ToString()), paymentId, FraudCheckType.MANUAL.ToString(),
+                IdemKey(http, paymentId, "MANUAL_DECISION"), paymentId, "MANUAL_DECISION",
                 async c =>
                 {
                     // false -> already finalized with another decision (409).
