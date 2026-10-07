@@ -18,7 +18,7 @@ services:
       - "JAVA_TOOL_OPTIONS=-Xms512m -Xmx512m"
     restart: unless-stopped
     healthcheck:
-      test: \[ "CMD-SHELL", "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/9600' || exit 1" \]
+      test: ["CMD-SHELL", "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/9600' || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -43,7 +43,7 @@ services:
       - management.endpoints.web.exposure.include=health
       - management.endpoint.health.probes.enabled=true
     healthcheck:
-      test: \[ "CMD-SHELL", "wget -O - -q 'http://localhost:8080/actuator/health/readiness'" \]
+      test: ["CMD-SHELL", "wget -O - -q 'http://localhost:8080/actuator/health/readiness'"]
       interval: 30s
       timeout: 1s
       retries: 5
@@ -68,7 +68,7 @@ services:
       - management.endpoints.web.exposure.include=health
       - management.endpoint.health.probes.enabled=true
     healthcheck:
-      test: \[ "CMD-SHELL", "wget -O - -q 'http://localhost:8080/actuator/health/readiness'" \]
+      test: ["CMD-SHELL", "wget -O - -q 'http://localhost:8080/actuator/health/readiness'"]
       interval: 30s
       timeout: 1s
       retries: 5
@@ -98,7 +98,7 @@ services:
         hard: -1
     restart: unless-stopped
     healthcheck:
-      test: \[ "CMD-SHELL", "curl -f http://localhost:9200/_cat/health | grep -q green" \]
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cat/health | grep -q green"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -155,7 +155,25 @@ services:
     environment:
       - ConnectionStrings__Payments=Host=postgres;Port=5432;Database=paymentdb;Username=${POSTGRES_USER};Password=${POSTGRES_POSTGRESPASSWORD}
     healthcheck:
-      test: ["CMD-SHELL", "wget -O - -q 'http://localhost:3000/health'"]
+      test: ["CMD-SHELL", "curl -f -s http://localhost:3000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - camunda-platform
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  fraud-check-service:
+    build: ./FraudCheckService
+    ports:
+      - "3001:3001"
+    environment:
+      - ConnectionStrings__Payments=Host=postgres;Port=5432;Database=fraudcheckdb;Username=${POSTGRES_USER};Password=${POSTGRES_POSTGRESPASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -s http://localhost:3001/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 5

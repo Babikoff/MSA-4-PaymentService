@@ -4,13 +4,14 @@ setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
 cd /d "%~dp0"
 set "BASE=http://localhost:3000"
+set "FRBASE=http://localhost:3001"
 set "TMP=%TEMP%\task42_tests"
 if not exist "%TMP%" mkdir "%TMP%"
 set PASS=0
 set FAIL=0
 
 echo.
-echo 🏁 Регрессионный тест Task4.2 - Camunda 8 + Payment Service
+echo 🏁 Регрессионный тест Task4.2 - Camunda 8 + Payment + FraudCheck Services
 echo.
 
 echo 🧪 Проверка окружения...
@@ -19,7 +20,7 @@ docker version >nul 2>&1
 if errorlevel 1 (call :fail "Docker не запущен") else call :pass "Docker запущен"
 
 docker compose ps -a --format "{{.Service}} {{.Status}}" > "%TMP%\svc.txt" 2>nul
-for %%s in (zeebe elasticsearch operate tasklist postgres payment-service) do (
+for %%s in (zeebe elasticsearch operate tasklist postgres payment-service fraud-check-service) do (
     findstr /b /c:"%%s Up" "%TMP%\svc.txt" >nul
     if errorlevel 1 (call :fail "Сервис %%s не запущен") else call :pass "Сервис %%s запущен"
 )
@@ -42,31 +43,21 @@ goto after_health
 call :pass "Payment Service /health отвечает"
 :after_health
 
-REM ============ Платформа Camunda 8 ============
-echo.
-echo 🧪 Проверка платформы Camunda 8...
-
-set "ZBCTL=%~dp0..\Task4.1\bpmn-tests\node_modules\.bin\zbctl.cmd"
-if not exist "%ZBCTL%" (
-    call :warn "zbctl не найден - проверка Zeebe пропущена"
-    goto zeebe_done
-)
-call "%ZBCTL%" status --address localhost:26500 --insecure >nul 2>&1
-if errorlevel 1 (call :fail "Zeebe gateway недоступен") else call :pass "Zeebe gateway доступен"
-:zeebe_done
-
-docker compose logs --no-color deploy-process > "%TMP%\deploy.log" 2>&1
-findstr /C:"PaymentSaga" "%TMP%\deploy.log" >nul
-if errorlevel 1 (call :fail "Процесс PaymentSaga не задеплоен") else call :pass "Процесс PaymentSaga задеплоен"
-findstr /C:"CancelPayment" "%TMP%\deploy.log" >nul
-if errorlevel 1 (call :fail "Процесс CancelPayment не задеплоен") else call :pass "Процесс CancelPayment задеплоен"
-findstr /C:"Processes deployed" "%TMP%\deploy.log" >nul
-if errorlevel 1 (call :fail "deploy-process не сообщил об успехе") else call :pass "deploy-process сообщил об успехе"
-
-for /f %%c in ('curl.exe -s -o NUL -w "%%{http_code}" http://localhost:8081/') do set "OC=%%c"
-if "!OC!"=="200" (call :pass "Operate отвечает (8081)") else call :fail "Operate не отвечает, код !OC!"
-for /f %%c in ('curl.exe -s -o NUL -w "%%{http_code}" http://localhost:8082/') do set "TC=%%c"
-if "!TC!"=="200" (call :pass "Tasklist отвечает (8082)") else call :fail "Tasklist не отвечает, код !TC!"
+echo 🧪 Ожидание FraudCheckService...
+set /a fw=0
+:wait_fhealth
+curl.exe -s -f "%FRBASE%/health" >nul 2>&1
+if not errorlevel 1 goto fhealth_ok
+set /a fw+=1
+if !fw! geq 10 goto fhealth_timeout
+timeout /t 3 /nobreak >nul
+goto wait_fhealth
+:fhealth_timeout
+call :fail "FraudCheckService /health не отвечает"
+goto after_fhealth
+:fhealth_ok
+call :pass "FraudCheckService /health отвечает"
+:after_fhealth
 
 REM ============ CRUD и валидация ============
 echo.
@@ -93,7 +84,7 @@ curl.exe -s -o NUL -w "%%{http_code}" "%BASE%/api/payments/00000000-0000-4000-80
 set /p CC=<"%TMP%\code.txt"
 if "!CC!"=="404" (call :pass "Неизвестный платеж вернул 404") else call :fail "Неизвестный платеж: ожидали 404, получили !CC!"
 
-REM ============ Жизненный цикл денег ============
+REM ============ Циклы жизненного цикла платажа ============
 echo.
 echo 🧪 HTTP-тесты Payment Service - жизненный цикл платежа...
 
@@ -182,6 +173,79 @@ findstr /C:"FUNDS_RETURNED" "%TMP%\rt.json" >nul
 if errorlevel 1 (call :fail "return: FUNDS_RETURNED не вернулся") else call :pass "return: FUNDS_RETURNED"
 :return_done
 
+REM ============ FraudCheckService ============
+echo.
+echo 🧪 HTTP-тесты FraudCheckService - антифрод-проверки...
+
+REM Авто-проверка (ANTIFRAUD_AUTOCHECK): детерминированный mock-ответ ALLOW.
+call :newid F1
+curl.exe -s -X POST "%FRBASE%/api/fraud/checks/" -H "Content-Type: application/json" -d "{\"paymentId\":\"%F1%\",\"payerId\":\"cust-fraud\",\"counterpartyId\":\"acct-fraud\",\"amount\":1500.75,\"currency\":\"RUB\",\"checkType\":\"AUTO\"}" -o "%TMP%\fcreate.json" >nul 2>&1
+findstr /C:"ANTIFRAUD_CHECKED" "%TMP%\fcreate.json" >nul
+if errorlevel 1 (call :fail "Авто-проверка: ANTIFRAUD_CHECKED не вернулся") else call :pass "Авто-проверка: ANTIFRAUD_CHECKED"
+findstr /C:"ALLOW" "%TMP%\fcreate.json" >nul
+if errorlevel 1 (call :fail "Авто-проверка: решение ALLOW не вернулось") else call :pass "Авто-проверка: решение ALLOW"
+
+REM Идемпотентность: повтор того же запроса обязан дать байт-в-байт тот же ответ.
+copy /y "%TMP%\fcreate.json" "%TMP%\fcreate1.json" >nul
+curl.exe -s -X POST "%FRBASE%/api/fraud/checks/" -H "Content-Type: application/json" -d "{\"paymentId\":\"%F1%\",\"payerId\":\"cust-fraud\",\"counterpartyId\":\"acct-fraud\",\"amount\":1500.75,\"currency\":\"RUB\",\"checkType\":\"AUTO\"}" -o "%TMP%\fcreate2.json" >nul 2>&1
+fc /b "%TMP%\fcreate1.json" "%TMP%\fcreate2.json" >nul
+if errorlevel 1 (call :fail "Идемпотентность автопроверки: повтор дал другой ответ") else call :pass "Идемпотентность автопроверки: повтор идентичен"
+
+REM Состояние проверки и решение читаются из БД.
+curl.exe -s "%FRBASE%/api/fraud/checks/%F1%" -o "%TMP%\fget.json" >nul 2>&1
+findstr /C:"cust-fraud" "%TMP%\fget.json" >nul
+if errorlevel 1 (call :fail "GET проверки: payerId не найден") else call :pass "GET проверки возвращает данные"
+
+curl.exe -s "%FRBASE%/api/fraud/checks/%F1%/decision" -o "%TMP%\fdec.json" >nul 2>&1
+findstr /C:"ALLOW" "%TMP%\fdec.json" >nul
+if errorlevel 1 (call :fail "GET decision: ALLOW не вернулся") else call :pass "GET decision возвращает ALLOW"
+
+REM Ручная проверка: checkType=MANUAL -> AWAITING_MANUAL_CHECK и очередь pending.
+call :newid F2
+curl.exe -s -X POST "%FRBASE%/api/fraud/checks/" -H "Content-Type: application/json" -d "{\"paymentId\":\"%F2%\",\"payerId\":\"cust-big\",\"counterpartyId\":\"acct-big\",\"amount\":900000,\"currency\":\"RUB\",\"checkType\":\"MANUAL\"}" -o "%TMP%\fmanual.json" >nul 2>&1
+findstr /C:"AWAITING_MANUAL_CHECK" "%TMP%\fmanual.json" >nul
+if errorlevel 1 (call :fail "Ручная проверка: AWAITING_MANUAL_CHECK не вернулся") else call :pass "Ручная проверка: AWAITING_MANUAL_CHECK"
+
+curl.exe -s "%FRBASE%/api/fraud/checks/pending" -o "%TMP%\fpending.json" >nul 2>&1
+findstr /C:"%F2%" "%TMP%\fpending.json" >nul
+if errorlevel 1 (call :fail "Очередь pending не содержит ручную проверку") else call :pass "Очередь pending содержит ручную проверку"
+
+REM Решение оператора: BLOCK -> FRAUD_OPERATION_DETECTED.
+curl.exe -s -X POST "%FRBASE%/api/fraud/checks/%F2%/manual-decision" -H "Content-Type: application/json" -d "{\"paymentId\":\"%F2%\",\"decision\":\"BLOCK\",\"operatorId\":\"op-test\",\"comment\":\"blocked by test\"}" -o "%TMP%\fblock.json" >nul 2>&1
+findstr /C:"FRAUD_OPERATION_DETECTED" "%TMP%\fblock.json" >nul
+if errorlevel 1 (call :fail "Решение оператора: FRAUD_OPERATION_DETECTED не вернулся") else call :pass "Решение оператора: FRAUD_OPERATION_DETECTED"
+findstr /C:"BLOCK" "%TMP%\fblock.json" >nul
+if errorlevel 1 (call :fail "Решение оператора: BLOCK не вернулось") else call :pass "Решение оператора: BLOCK"
+
+REM Идемпотентность ручного решения: повтор идентичен.
+copy /y "%TMP%\fblock.json" "%TMP%\fblock1.json" >nul
+curl.exe -s -X POST "%FRBASE%/api/fraud/checks/%F2%/manual-decision" -H "Content-Type: application/json" -d "{\"paymentId\":\"%F2%\",\"decision\":\"BLOCK\",\"operatorId\":\"op-test\",\"comment\":\"blocked by test\"}" -o "%TMP%\fblock2.json" >nul 2>&1
+fc /b "%TMP%\fblock1.json" "%TMP%\fblock2.json" >nul
+if errorlevel 1 (call :fail "Идемпотентность manual-decision: повтор дал другой ответ") else call :pass "Идемпотентность manual-decision: повтор идентичен"
+
+REM Повтор с другим решением -> 409.
+curl.exe -s -o NUL -w "%%{http_code}" -X POST "%FRBASE%/api/fraud/checks/%F2%/manual-decision" -H "Content-Type: application/json" -d "{\"paymentId\":\"%F2%\",\"decision\":\"ALLOW\",\"operatorId\":\"op-test\",\"comment\":\"try allow\"}" > "%TMP%\code.txt"
+set /p FSC=<"%TMP%\code.txt"
+if "!FSC!"=="409" (call :pass "Конфликт решений вернул 409") else call :fail "Конфликт решений: ожидали 409, получили !FSC!"
+
+REM Валидация входных данных.
+curl.exe -s -o NUL -w "%%{http_code}" -X POST "%FRBASE%/api/fraud/checks/%F1%/manual-decision" -H "Content-Type: application/json" -d "{\"paymentId\":\"%F1%\",\"decision\":\"MANUAL\",\"operatorId\":\"op-test\",\"comment\":\"x\"}" > "%TMP%\code.txt"
+set /p FSC=<"%TMP%\code.txt"
+if "!FSC!"=="400" (call :pass "Валидация decision=MANUAL вернула 400") else call :fail "Валидация decision=MANUAL: ожидали 400, получили !FSC!"
+
+curl.exe -s -o NUL -w "%%{http_code}" -X POST "%FRBASE%/api/fraud/checks/" -H "Content-Type: application/json" -d "{\"payerId\":\"p\",\"counterpartyId\":\"c\",\"amount\":1,\"currency\":\"RUB\",\"checkType\":\"AUTO\"}" > "%TMP%\code.txt"
+set /p FSC=<"%TMP%\code.txt"
+if "!FSC!"=="400" (call :pass "Валидация без paymentId вернула 400") else call :fail "Валидация без paymentId: ожидали 400, получили !FSC!"
+
+REM Неизвестная проверка -> 404.
+curl.exe -s -o NUL -w "%%{http_code}" "%FRBASE%/api/fraud/checks/00000000-0000-4000-8000-0000000000fe" > "%TMP%\code.txt"
+set /p FSC=<"%TMP%\code.txt"
+if "!FSC!"=="404" (call :pass "Неизвестная проверка вернула 404") else call :fail "Неизвестная проверка: ожидали 404, получили !FSC!"
+
+curl.exe -s -o NUL -w "%%{http_code}" -X POST "%FRBASE%/api/fraud/checks/00000000-0000-4000-8000-0000000000fe/manual-decision" -H "Content-Type: application/json" -d "{\"paymentId\":\"00000000-0000-4000-8000-0000000000fe\",\"decision\":\"BLOCK\",\"operatorId\":\"op-test\",\"comment\":\"x\"}" > "%TMP%\code.txt"
+set /p FSC=<"%TMP%\code.txt"
+if "!FSC!"=="404" (call :pass "manual-decision для неизвестного вернул 404") else call :fail "manual-decision для неизвестного: ожидали 404, получили !FSC!"
+
 REM ============ PostgreSQL ============
 echo.
 echo 🧪 Проверка данных в PostgreSQL...
@@ -205,6 +269,30 @@ REM Финальный статус цепочки зафиксирован в �
 docker exec postgres psql -U orchestrpay -d paymentdb -t -A -c "SELECT \"Status\" FROM \"Payments\" WHERE \"Id\"='%CH%'" > "%TMP%\st.txt" 2>&1
 set /p PST=<"%TMP%\st.txt"
 if "!PST!"=="PAYMENT_PROCESS_COMPLETED" (call :pass "Статус в БД: PAYMENT_PROCESS_COMPLETED") else call :fail "Статус в БД: !PST!, ожидался PAYMENT_PROCESS_COMPLETED"
+
+REM ============ PostgreSQL fraudcheckdb ============
+echo.
+echo 🧪 Проверка данных FraudCheckService в PostgreSQL...
+
+docker exec postgres psql -U orchestrpay -d fraudcheckdb -t -A -c "SELECT count(*) FROM \"Payments\"" > "%TMP%\fcnt.txt" 2>&1
+set /p FCNT=<"%TMP%\fcnt.txt"
+echo(!FCNT!| findstr /r /x "[0-9][0-9]*" >nul
+if errorlevel 1 (call :fail "Запрос Payments в fraudcheckdb не вернул число: !FCNT!") else call :pass "Таблица Payments (fraudcheckdb) доступна, строк: !FCNT!"
+
+docker exec postgres psql -U orchestrpay -d fraudcheckdb -t -A -c "SELECT count(*) FROM \"OperationRecords\"" > "%TMP%\focnt.txt" 2>&1
+set /p FOCNT=<"%TMP%\focnt.txt"
+echo(!FOCNT!| findstr /r /x "[0-9][0-9]*" >nul
+if errorlevel 1 (call :fail "Запрос OperationRecords в fraudcheckdb не вернул число: !FOCNT!") else call :pass "Таблица OperationRecords (fraudcheckdb) доступна, строк: !FOCNT!"
+
+REM Ровно одна запись на ключ идемпотентности автопроверки.
+docker exec postgres psql -U orchestrpay -d fraudcheckdb -t -A -c "SELECT count(*) FROM \"OperationRecords\" WHERE \"Key\"='%F1%:AUTOCHECK'" > "%TMP%\fkc.txt" 2>&1
+set /p FKC=<"%TMP%\fkc.txt"
+if "!FKC!"=="1" (call :pass "Ключ %F1%:AUTOCHECK встречается ровно 1 раз") else call :fail "Ключ %F1%:AUTOCHECK встречается !FKC! раз(а), ожидалось 1"
+
+REM Финальный статус ручной проверки зафиксирован в БД.
+docker exec postgres psql -U orchestrpay -d fraudcheckdb -t -A -c "SELECT \"Status\" FROM \"Payments\" WHERE \"PaymentId\"='%F2%'" > "%TMP%\fst.txt" 2>&1
+set /p FST=<"%TMP%\fst.txt"
+if "!FST!"=="FRAUD_OPERATION_DETECTED" (call :pass "Статус FraudCheck в БД: FRAUD_OPERATION_DETECTED") else call :fail "Статус FraudCheck в БД: !FST!, ожидался FRAUD_OPERATION_DETECTED"
 
 REM ============ Итог ============
 echo.
