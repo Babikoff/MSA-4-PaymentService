@@ -19,8 +19,9 @@ public static class FraudEndpoints
 
         var group = app.MapGroup("/api/fraud/checks");
 
-        // Анто-проверка (ANTIFRAUD_AUTOCHECK) + решение оператора (ANTIFRAUD_MANUAL_CHECK).
+        // Авто-проверка (ANTIFRAUD_AUTOCHECK)
         group.MapPost("/", AutoCheckAsync);
+        // Проверка оператором (ANTIFRAUD_MANUAL_CHECK).
         group.MapPost("/{paymentId:guid}/manual-decision", ManualDecideAsync);
         // Polling-решение для воркера оркестратора; полное состояние и очередь оператора.
         group.MapGet("/{paymentId:guid}/decision", DecisionAsync);

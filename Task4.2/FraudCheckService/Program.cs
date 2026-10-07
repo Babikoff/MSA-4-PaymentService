@@ -47,7 +47,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-// Ensure the fraudcheckdb database + schema on startup (prototype).
+// Проверяем базу fraudcheckdb при запуске
 using (var scope = app.Services.CreateScope())
 {
     var init = scope.ServiceProvider.GetRequiredService<DbInitializer>();
