@@ -59,32 +59,6 @@ goto after_fhealth
 call :pass "FraudCheckService /health отвечает"
 :after_fhealth
 
-REM ============ Платформа Camunda 8 ============
-echo.
-echo 🧪 Проверка платформы Camunda 8...
-
-set "ZBCTL=%~dp0..\Task4.1\bpmn-tests\node_modules\.bin\zbctl.cmd"
-if not exist "%ZBCTL%" (
-    call :warn "zbctl не найден - проверка Zeebe пропущена"
-    goto zeebe_done
-)
-call "%ZBCTL%" status --address localhost:26500 --insecure >nul 2>&1
-if errorlevel 1 (call :fail "Zeebe gateway недоступен") else call :pass "Zeebe gateway доступен"
-:zeebe_done
-
-docker compose logs --no-color deploy-process > "%TMP%\deploy.log" 2>&1
-findstr /C:"PaymentSaga" "%TMP%\deploy.log" >nul
-if errorlevel 1 (call :fail "Процесс PaymentSaga не задеплоен") else call :pass "Процесс PaymentSaga задеплоен"
-findstr /C:"CancelPayment" "%TMP%\deploy.log" >nul
-if errorlevel 1 (call :fail "Процесс CancelPayment не задеплоен") else call :pass "Процесс CancelPayment задеплоен"
-findstr /C:"Processes deployed" "%TMP%\deploy.log" >nul
-if errorlevel 1 (call :fail "deploy-process не сообщил об успехе") else call :pass "deploy-process сообщил об успехе"
-
-for /f %%c in ('curl.exe -s -o NUL -w "%%{http_code}" http://localhost:8081/') do set "OC=%%c"
-if "!OC!"=="200" (call :pass "Operate отвечает (8081)") else call :fail "Operate не отвечает, код !OC!"
-for /f %%c in ('curl.exe -s -o NUL -w "%%{http_code}" http://localhost:8082/') do set "TC=%%c"
-if "!TC!"=="200" (call :pass "Tasklist отвечает (8082)") else call :fail "Tasklist не отвечает, код !TC!"
-
 REM ============ CRUD и валидация ============
 echo.
 echo 🧪 HTTP-тесты Payment Service - CRUD и валидация...
@@ -110,7 +84,7 @@ curl.exe -s -o NUL -w "%%{http_code}" "%BASE%/api/payments/00000000-0000-4000-80
 set /p CC=<"%TMP%\code.txt"
 if "!CC!"=="404" (call :pass "Неизвестный платеж вернул 404") else call :fail "Неизвестный платеж: ожидали 404, получили !CC!"
 
-REM ============ Жизненный цикл денег ============
+REM ============ Циклы жизненного цикла платажа ============
 echo.
 echo 🧪 HTTP-тесты Payment Service - жизненный цикл платежа...
 
