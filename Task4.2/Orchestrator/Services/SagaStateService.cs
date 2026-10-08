@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Orchestrator.Models;
 
 namespace Orchestrator.Services;
@@ -21,6 +21,7 @@ public interface ISagaRepository
 
 public class InMemorySagaRepository : ISagaRepository
 {
+    //TODO: использовать постоянное хранилище данных или кэш с устареванием
     private readonly ConcurrentDictionary<Guid, SagaState> _store = new();
 
     public Task<SagaState?> GetAsync(Guid paymentId, CancellationToken ct = default) =>
