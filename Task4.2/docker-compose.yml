@@ -197,6 +197,33 @@ services:
     networks:
       - camunda-platform
 
+  orchestrator:
+    build: ./Orchestrator
+    ports:
+      - "3003:3003"
+    environment:
+      - Zeebe__GatewayAddress=zeebe:26500
+      - Services__Payment=http://payment-service:3000
+      - Services__FraudCheck=http://fraud-check-service:3001
+      - Services__Notification=http://notification-service:3002
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -s http://localhost:3003/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - camunda-platform
+    depends_on:
+      zeebe:
+        condition: service_healthy
+      payment-service:
+        condition: service_healthy
+      fraud-check-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+
 volumes:
   zeebe:
   elastic:

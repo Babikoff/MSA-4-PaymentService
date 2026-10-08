@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 REM Smoke/regression tests for the currently deployed Task4.2 stack.
 setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
@@ -54,6 +54,66 @@ for /f %%c in ('curl.exe -s -o NUL -w "%%{http_code}" http://localhost:8082/') d
 if "!TC!"=="200" (call :pass "Tasklist отвечает (8082)") else call :fail "Tasklist не отвечает, код !TC!"
 
 
+
+REM ============ Orchestrator (.NET) E2E tests ============
+echo.
+echo Test Orchestrator (E2E: Zeebe - Orchestrator - domain services)...
+echo.
+
+set "OBASE=http://localhost:3003"
+
+curl.exe -s -f "%OBASE%/health" >nul 2>&1
+if not errorlevel 1 (call :pass "Orchestrator /health отвечает (3003)") else (call :fail "Orchestrator /health не отвечает (3003)")
+
+curl.exe -s -f "%BASE%/health" >nul 2>&1
+if not errorlevel 1 (call :pass "PaymentService /health отвечает") else (call :fail "PaymentService /health не отвечает")
+curl.exe -s -f "%FRBASE%/health" >nul 2>&1
+if not errorlevel 1 (call :pass "FraudCheckService /health отвечает") else (call :fail "FraudCheckService /health не отвечает")
+curl.exe -s -f "http://localhost:3002/health" >nul 2>&1
+if not errorlevel 1 (call :pass "NotificationService /health отвечает") else (call :fail "NotificationService /health не отвечает")
+echo.
+
+call :newid E1
+set "PAY=%E1%"
+
+echo {"paymentId":"%PAY%","payerId":"e2e-user","counterpartyId":"e2e-acct","amount":99.5,"currency":"USD"} > "%TMP%\vars.json"
+call "%ZBCTL%" publish message --address localhost:26500 --insecure START_PAYMENT --correlationKey %PAY% --variables "%TMP%\vars.json" >nul 2>&1
+if not errorlevel 1 (call :pass "START_PAYMENT опубликован") else (call :fail "START_PAYMENT publish failed")
+
+set /a att=0
+:wait_saga
+timeout /t 3 /nobreak >nul
+
+curl.exe -s -f "%OBASE%/sagas/%PAY%/status" > "%TMP%\saga.txt" 2>nul
+if not errorlevel 1 (
+    findstr /C:"COMPLETED" "%TMP%\saga.txt" >nul
+    if not errorlevel 1 (
+        call :pass "Сага COMPLETED (E2E через оркестратор)"
+        goto saga_done
+    )
+    findstr /C:"CANCELED" "%TMP%\saga.txt" >nul
+    if not errorlevel 1 (
+        call :pass "Сага CANCELED (E2E через оркестратор)"
+        goto saga_done
+    )
+    set /a att+=1
+    if !att! lss 20 goto wait_saga
+    call :fail "Сага не завершилась за ~60с:"
+    type "%TMP%\saga.txt"
+) else (
+    set /a att+=1
+    if !att! lss 20 goto wait_saga
+    call :fail "Orchestrator не вернул статус саги за ~60с"
+)
+:saga_done
+del /q "%TMP%\saga.txt" "%TMP%\vars.json" 2>nul
+
+curl.exe -s -f "%BASE%/api/payments/%PAY%" > "%TMP%\pay.txt" 2>nul
+if not errorlevel 1 (
+    findstr /C:"%PAY%" "%TMP%\pay.txt" >nul
+    if not errorlevel 1 (call :pass "Платеж виден в PaymentService (создан оркестратором)") else (call :fail "PaymentService вернул чужой платеж")
+) else (call :fail "Платеж не найден в PaymentService")
+del /q "%TMP%\pay.txt" 2>nul
 
 REM ============ Итог ============
 echo.
