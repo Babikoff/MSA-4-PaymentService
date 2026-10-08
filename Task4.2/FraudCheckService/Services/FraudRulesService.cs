@@ -53,12 +53,13 @@ public class FraudRulesService
     }
 
     /// <summary>
-    /// Авто-проверка (ANTIFRAUD_AUTOCHECK): mock-правила.
+    /// Авто-проверка (ANTIFRAUD_AUTOCHECK). 
     /// AUTO -> сразу ALLOW; MANUAL -> ожидание решения оператора (AWAITING_MANUAL_CHECK).
     /// Изменения применяются к case и сохраняются слоем идемпотентности.
     /// </summary>
     public async Task AutoCheckAsync(FraudCheckCase c, FraudCheckRequest request, CancellationToken ct)
     {
+        //TODO: убрать рандомные задержки (сделано для эмуляции реальной работы в прототипе)
         await Task.Delay(Random.Shared.Next(_options.MinDelayMs, _options.MaxDelayMs), ct);
 
         if (string.Equals(request.CheckType, FraudCheckType.MANUAL.ToString(), StringComparison.OrdinalIgnoreCase))
@@ -86,6 +87,7 @@ public class FraudRulesService
         CancellationToken ct
         )
     {
+        //TODO: убрать рандомные задержки (сделано для эмуляции реальной работы в прототипе)
         await Task.Delay(Random.Shared.Next(_options.MinDelayMs, _options.MaxDelayMs), ct);
 
         // if Decision has a value, put it into decided

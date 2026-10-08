@@ -17,7 +17,7 @@ public sealed record OperationOutcome<T>(bool Success, T? Data);
 /// Гарантирует «выполнить ровно один раз, ответить каждый раз» (паттерн Idempotency Key):
 /// доменная операция применяется один раз на ключ идемпотентности,
 /// а повторный запрос (ретрай job из Zeebe, at-least-once) получает сохранённый
-/// результат вместо повторного применения — effectively-once поверх at-least-once.
+/// результат вместо повторного применения - effectively-once поверх at-least-once.
 /// </summary>
 public class IdempotencyService
 {
@@ -32,11 +32,11 @@ public class IdempotencyService
     /// повтор с тем же ключом возвращает сохранённый результат (Replay).
     /// </summary>
     /// <typeparam name="T">Тип DTO-результата операции.</typeparam>
-    /// <param name="key">Ключ идемпотентности (заголовок <c>Idempotency-Key</c>); если <c>null</c> — выводится из paymentId и operation.</param>
-    /// <param name="paymentId">Идентификатор платежа — агрегат, к которому применяется операция.</param>
+    /// <param name="key">Ключ идемпотентности (заголовок <c>Idempotency-Key</c>); если <c>null</c> - выводится из paymentId и operation.</param>
+    /// <param name="paymentId">Идентификатор платежа - агрегат, к которому применяется операция.</param>
     /// <param name="operation">Имя операции (<c>HOLD</c>, <c>TRANSFER</c>, <c>RELEASE</c>, <c>RETURN</c>, <c>COMPLETE</c>, <c>FINISH</c>).</param>
     /// <param name="apply">Бизнес-логика: меняет состояние платежа и возвращает (успех, результат).</param>
-    /// <returns><see cref="OperationOutcome{T}"/>: флаг успеха и результат — первый вызов или Replay.</returns>
+    /// <returns><see cref="OperationOutcome{T}"/>: флаг успеха и результат - первый вызов или Replay.</returns>
     /// <exception cref="EntityNotFoundException">Платеж с указанным идентификатором не найден.</exception>
     public async Task<OperationOutcome<T>> ExecuteAsync<T>(
         string? key,
@@ -64,7 +64,7 @@ public class IdempotencyService
         if (payment is null)
             throw new EntityNotFoundException(paymentId);
 
-        // Повторная проверка ключа уже внутри транзакции — защита
+        // Повторная проверка ключа уже внутри транзакции - защита
         // от конкурентных ретраев, прошедших шаг 2 до коммита другого запроса.
         var concurrent = await _db.OperationRecords.AsNoTracking()
             .FirstOrDefaultAsync(r => r.Key == key);

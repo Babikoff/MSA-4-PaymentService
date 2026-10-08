@@ -133,12 +133,12 @@ if errorlevel 1 goto chain_fail
 
 curl.exe -s "%BASE%/api/payments/%CH%" -o "%TMP%\final.json" >nul 2>&1
 findstr /C:"PAYMENT_PROCESS_COMPLETED" "%TMP%\final.json" >nul
-if errorlevel 1 (call :fail "Финальный статус не PAYMENT_PROCESS_COMPLETED") else call :pass "Полная цепочка hold → transfer → complete прошла"
+if errorlevel 1 (call :fail "Финальный статус не PAYMENT_PROCESS_COMPLETED") else call :pass "Полная цепочка Hold -> Transfer -> Complete прошла"
 goto chain_done
 
 :chain_fail
 if !att! lss 3 goto chain_retry
-call :fail "Цепочка hold→transfer→complete не прошла за 3 попытки"
+call :fail "Цепочка Hold -> Transfer -> Complete не прошла за 3 попытки"
 :chain_done
 
 REM ============ Компенсации ============

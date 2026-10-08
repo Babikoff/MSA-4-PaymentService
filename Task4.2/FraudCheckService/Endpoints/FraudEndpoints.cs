@@ -9,23 +9,17 @@ public static class FraudEndpoints
 {
     public static void MapFraudEndpoints(this WebApplication app)
     {
-        /* Нужно реализовать:
-        POST	/api/fraud/checks	ANTIFRAUD_AUTOCHECK	Автопроверка. Идемпотентна (Idempotency-Key/paymentId:AUTOCHECK). Если платёж не передан в теле — тянет GET PaymentService /api/payments/{id} (enrichment, таймаут по F8). Возвращает FraudDecisionResponse
-        POST	/api/fraud/checks/{paymentId}/manual-decision	ANTIFRAUD_MANUAL_CHECK	Финальное решение оператора → статус ANTIFRAUD_CHECKED / FRAUD_OPERATION_DETECTED. Идемпотентна (:MANUAL_DECISION); 409 при повторе с другим решением
-        GET	/api/fraud/checks/{paymentId}/decision	polling worker'а	Текущее решение (для долгого polling'а ANTIFRAUD_MANUAL_CHECK-воркером оркестратора, пока оператор не решил)
-        GET	/api/fraud/checks/{paymentId}	—	Состояние проверки (отладка/тесты)
-        GET	/api/fraud/checks/pending	—	Очередь AWAITING_MANUAL_CHECK для оператора 
-         */
-
         var group = app.MapGroup("/api/fraud/checks");
 
         // Авто-проверка (ANTIFRAUD_AUTOCHECK)
         group.MapPost("/", AutoCheckAsync);
         // Проверка оператором (ANTIFRAUD_MANUAL_CHECK).
         group.MapPost("/{paymentId:guid}/manual-decision", ManualDecideAsync);
-        // Polling-решение для воркера оркестратора; полное состояние и очередь оператора.
+        // Получить решение по платежу
         group.MapGet("/{paymentId:guid}/decision", DecisionAsync);
+        // Получить всю инфу по заявке на проверку платежа
         group.MapGet("/{paymentId:guid}", GetAsync);
+        // Получить очередь ожидающих решения платежей
         group.MapGet("/pending", PendingAsync);
     }
 
@@ -51,7 +45,6 @@ public static class FraudEndpoints
 
         try
         {
-            // The idempotency layer works on an existing case — ensure it first.
             await rules.LoadOrCreateCaseAsync(req.PaymentId, req, ct);
 
             var outcome = await idem.ExecuteAsync<FraudDecisionResponse>(
@@ -105,7 +98,7 @@ public static class FraudEndpoints
             logger.LogInformation("Manual decision for {PaymentId}: {Decision} by {Operator}.",
                 paymentId, req.Decision, req.OperatorId);
 
-            // Conflict: stored decision differs from the requested one (409).
+            // Проверяем не случился ли конфликт при обновлении записи
             return !outcome.Success || outcome.Data?.Decision != req.Decision
                 ? Results.Conflict(outcome.Data)
                 : Results.Ok(outcome.Data);
@@ -134,7 +127,7 @@ public static class FraudEndpoints
         );
 
 
-    // Текущее решение (polling ANTIFRAUD_MANUAL_CHECK-воркером оркестратора).
+    // Получить решение по платежу
     private static async Task<IResult> DecisionAsync(
         Guid paymentId, FraudRulesService rules, CancellationToken ct)
     {

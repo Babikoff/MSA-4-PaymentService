@@ -23,7 +23,7 @@ public class FraudCheckCase
     /// <summary>Финальное решение; null, пока не принято.</summary>
     public FraudCheckDecision? Decision { get; set; }
 
-    /// <summary>Оценка риска (0..100), чем выше — тем опаснее.</summary>
+    /// <summary>Оценка риска (от 0 до 100), чем выше - тем опаснее.</summary>
     public int RiskScore { get; set; }
 
     /// <summary>JSON-массив имён сработавших правил (RuleHits).</summary>
@@ -43,7 +43,7 @@ public class FraudCheckCase
         UpdatedAt = DateTimeOffset.UtcNow;
     }
 
-    /// <summary>Фиксирует решение (и финальный статус) — один раз на проверку.</summary>
+    /// <summary>Фиксирует решение (и финальный статус) - один раз на проверку.</summary>
     public void ApplyDecision(FraudCheckDecision decision)
     {
         Decision = decision;
