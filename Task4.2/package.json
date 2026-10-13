@@ -1,0 +1,8 @@
+{
+  "name": "task42-bpmn-tests",
+  "private": true,
+  "description": "Stub orchestrator worker for Task4.2 BPMN orchestration tests",
+  "dependencies": {
+    "zeebe-node": "^8.2.5"
+  }
+}

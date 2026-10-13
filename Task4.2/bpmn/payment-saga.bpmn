@@ -1,0 +1,517 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_PaymentSaga" targetNamespace="http://org.orchestrpay/payment-saga" exporter="Camunda Modeler" exporterVersion="5.51.1" modeler:executionPlatform="Camunda Cloud" modeler:executionPlatformVersion="8.5.0">
+  <bpmn:message id="MessageStartPayment" name="START_PAYMENT" />
+  <bpmn:message id="MessageCancelHold" name="CANCEL_HOLD">
+    <bpmn:extensionElements>
+      <zeebe:subscription correlationKey="=paymentId" />
+    </bpmn:extensionElements>
+  </bpmn:message>
+  <bpmn:process id="PaymentSaga" name="Payment Saga" isExecutable="true">
+    <bpmn:extensionElements>
+      <zeebe:properties>
+        <zeebe:property name="sagaSteps" value="CREATE_PAYMENT;HOLD_FUNDS;RELEASE_FUNDS;CANCEL_HOLD;ANTIFRAUD_AUTOCHECK;AWAITING_MANUAL_CHECK;ANTIFRAUD_MANUAL_CHECK;ANTIFRAUD_TIMEOUT;TRANSFER_FUNDS;RETURN_FUNDS;SEND_NOTIFICATION_TO_USER;SEND_NOTIFICATION_TO_SECURITY;COMPLETE_PAYMENT;FINISH_PAYMENT_PROCESS" />
+      </zeebe:properties>
+    </bpmn:extensionElements>
+    <bpmn:startEvent id="StartEventCreatePayment" name="CREATE_PAYMENT">
+      <bpmn:extensionElements>
+        <zeebe:subscription correlationKey="=paymentId" />
+      </bpmn:extensionElements>
+      <bpmn:outgoing>FlowStartToCreate</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MsgStartPaymentDef" messageRef="MessageStartPayment" />
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="TaskCreatePayment" name="CREATE_PAYMENT">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="CREATE_PAYMENT" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>FlowStartToCreate</bpmn:incoming>
+      <bpmn:outgoing>FlowCreateToHold</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="TaskHoldFunds" name="HOLD_FUNDS">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="HOLD_FUNDS" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>FlowCreateToHold</bpmn:incoming>
+      <bpmn:outgoing>FlowHoldToHoldCheck</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:boundaryEvent id="BoundaryCancelHold" name="CANCEL_HOLD" attachedToRef="TaskHoldFunds">
+      <bpmn:outgoing>FlowCancelHoldToRelease</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MsgCancelHoldDef" messageRef="MessageCancelHold" />
+    </bpmn:boundaryEvent>
+    <bpmn:exclusiveGateway id="GwHoldCheck" name="hold ok?" default="FlowHoldFailNotify">
+      <bpmn:incoming>FlowHoldToHoldCheck</bpmn:incoming>
+      <bpmn:outgoing>FlowHoldCheckToAntifraud</bpmn:outgoing>
+      <bpmn:outgoing>FlowHoldFailNotify</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="TaskNotifyHoldFail" name="SEND_NOTIFICATION_TO_USER">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="SEND_NOTIFICATION_TO_USER" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>FlowHoldFailNotify</bpmn:incoming>
+      <bpmn:outgoing>FlowHoldFailNotifyEnd</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="EndHoldFailed" name="FAILED">
+      <bpmn:incoming>FlowHoldFailNotifyEnd</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="TaskAntifraudAuto" name="ANTIFRAUD_AUTOCHECK">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="ANTIFRAUD_AUTOCHECK" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>FlowHoldCheckToAntifraud</bpmn:incoming>
+      <bpmn:outgoing>FlowAntifraudToFraudGw</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="GwFraud" name="fraud decision?" default="FlowFraudManual">
+      <bpmn:incoming>FlowAntifraudToFraudGw</bpmn:incoming>
+      <bpmn:incoming>FlowManualBackToFraudGw</bpmn:incoming>
+      <bpmn:outgoing>FlowFraudAllow</bpmn:outgoing>
+      <bpmn:outgoing>FlowFraudBlock</bpmn:outgoing>
+      <bpmn:outgoing>FlowFraudManual</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="TaskTransfer" name="TRANSFER_FUNDS">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="TRANSFER_FUNDS" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>FlowFraudAllow</bpmn:incoming>
+      <bpmn:incoming>FlowTimeoutToTransfer</bpmn:incoming>
+      <bpmn:outgoing>FlowTransferToTransferCheck</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="GwTransferCheck" name="transfer ok?" default="FlowTransferFailReturn">
+      <bpmn:incoming>FlowTransferToTransferCheck</bpmn:incoming>
+      <bpmn:outgoing>FlowTransferOkComplete</bpmn:outgoing>
+      <bpmn:outgoing>FlowTransferFailReturn</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:serviceTask id="TaskComplete" name="COMPLETE_PAYMENT">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="COMPLETE_PAYMENT" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>FlowTransferOkComplete</bpmn:incoming>
+      <bpmn:outgoing>FlowCompleteToNotify</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="TaskNotifyCompleted" name="SEND_NOTIFICATION_TO_USER">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="SEND_NOTIFICATION_TO_USER" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>FlowCompleteToNotify</bpmn:incoming>
+      <bpmn:outgoing>FlowNotifyCompletedEnd</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="EndCompleted" name="COMPLETED">
+      <bpmn:incoming>FlowNotifyCompletedEnd</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="TaskReturnFunds" name="RETURN_FUNDS">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="RETURN_FUNDS" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>FlowTransferFailReturn</bpmn:incoming>
+      <bpmn:outgoing>FlowReturnToFinishTransferFail</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="TaskFinishTransferFail" name="FINISH_PAYMENT_PROCESS">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="FINISH_PAYMENT_PROCESS" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>FlowReturnToFinishTransferFail</bpmn:incoming>
+      <bpmn:outgoing>FlowFinishTransferFailNotify</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="TaskNotifyTransferFail" name="SEND_NOTIFICATION_TO_USER">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="SEND_NOTIFICATION_TO_USER" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>FlowFinishTransferFailNotify</bpmn:incoming>
+      <bpmn:outgoing>FlowNotifyTransferFailEnd</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="EndCanceledTransferFail" name="CANCELED">
+      <bpmn:incoming>FlowNotifyTransferFailEnd</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="TaskNotifySecurity" name="SEND_NOTIFICATION_TO_SECURITY">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="SEND_NOTIFICATION_TO_SECURITY" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>FlowFraudBlock</bpmn:incoming>
+      <bpmn:outgoing>FlowNotifySecurityToRelease</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="TaskReleaseFundsFraud" name="RELEASE_FUNDS">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="RELEASE_FUNDS" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>FlowNotifySecurityToRelease</bpmn:incoming>
+      <bpmn:outgoing>FlowReleaseFraudToFinish</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="TaskFinishFraud" name="FINISH_PAYMENT_PROCESS">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="FINISH_PAYMENT_PROCESS" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>FlowReleaseFraudToFinish</bpmn:incoming>
+      <bpmn:outgoing>FlowFinishFraudNotify</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="TaskNotifyFraudCancel" name="SEND_NOTIFICATION_TO_USER">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="SEND_NOTIFICATION_TO_USER" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>FlowFinishFraudNotify</bpmn:incoming>
+      <bpmn:outgoing>FlowNotifyFraudCancelEnd</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="EndCanceledFraud" name="CANCELED">
+      <bpmn:incoming>FlowNotifyFraudCancelEnd</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:subProcess id="SubManualCheck" name="AWAITING_MANUAL_CHECK">
+      <bpmn:incoming>FlowFraudManual</bpmn:incoming>
+      <bpmn:outgoing>FlowManualBackToFraudGw</bpmn:outgoing>
+      <bpmn:startEvent id="SubManualStart">
+        <bpmn:outgoing>FlowSubManualStartToTask</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:serviceTask id="TaskAntifraudManual" name="ANTIFRAUD_MANUAL_CHECK">
+        <bpmn:extensionElements>
+          <zeebe:taskDefinition type="ANTIFRAUD_MANUAL_CHECK" />
+        </bpmn:extensionElements>
+        <bpmn:incoming>FlowSubManualStartToTask</bpmn:incoming>
+        <bpmn:outgoing>FlowSubManualTaskToEnd</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:sequenceFlow id="FlowSubManualStartToTask" sourceRef="SubManualStart" targetRef="TaskAntifraudManual" />
+      <bpmn:sequenceFlow id="FlowSubManualTaskToEnd" sourceRef="TaskAntifraudManual" targetRef="SubManualEnd" />
+      <bpmn:endEvent id="SubManualEnd">
+        <bpmn:incoming>FlowSubManualTaskToEnd</bpmn:incoming>
+      </bpmn:endEvent>
+    </bpmn:subProcess>
+    <bpmn:boundaryEvent id="BoundaryTimeout" name="ANTIFRAUD_TIMEOUT" attachedToRef="SubManualCheck">
+      <bpmn:outgoing>FlowTimeoutToTransfer</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TimerCutOff">
+        <bpmn:timeDuration>PT5M</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+    <bpmn:serviceTask id="TaskReleaseFundsCancel" name="RELEASE_FUNDS">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="RELEASE_FUNDS" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>FlowCancelHoldToRelease</bpmn:incoming>
+      <bpmn:outgoing>FlowCancelReleaseToFinish</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="TaskFinishCancel" name="FINISH_PAYMENT_PROCESS">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="FINISH_PAYMENT_PROCESS" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>FlowCancelReleaseToFinish</bpmn:incoming>
+      <bpmn:outgoing>FlowCancelFinishNotify</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:serviceTask id="TaskNotifyCancelHold" name="SEND_NOTIFICATION_TO_USER">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="SEND_NOTIFICATION_TO_USER" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>FlowCancelFinishNotify</bpmn:incoming>
+      <bpmn:outgoing>FlowCancelNotifyEnd</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="EndCanceledCancelHold" name="CANCELED">
+      <bpmn:incoming>FlowCancelNotifyEnd</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="FlowStartToCreate" sourceRef="StartEventCreatePayment" targetRef="TaskCreatePayment" />
+    <bpmn:sequenceFlow id="FlowCreateToHold" sourceRef="TaskCreatePayment" targetRef="TaskHoldFunds" />
+    <bpmn:sequenceFlow id="FlowHoldToHoldCheck" sourceRef="TaskHoldFunds" targetRef="GwHoldCheck" />
+    <bpmn:sequenceFlow id="FlowHoldCheckToAntifraud" name="ok" sourceRef="GwHoldCheck" targetRef="TaskAntifraudAuto">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=holdOk = true</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="FlowHoldFailNotify" name="failed" sourceRef="GwHoldCheck" targetRef="TaskNotifyHoldFail" />
+    <bpmn:sequenceFlow id="FlowHoldFailNotifyEnd" sourceRef="TaskNotifyHoldFail" targetRef="EndHoldFailed" />
+    <bpmn:sequenceFlow id="FlowAntifraudToFraudGw" sourceRef="TaskAntifraudAuto" targetRef="GwFraud" />
+    <bpmn:sequenceFlow id="FlowFraudAllow" name="ALLOW" sourceRef="GwFraud" targetRef="TaskTransfer">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=fraudDecision = "ALLOW"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="FlowFraudBlock" name="BLOCK" sourceRef="GwFraud" targetRef="TaskNotifySecurity">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=fraudDecision = "BLOCK"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="FlowFraudManual" name="MANUAL" sourceRef="GwFraud" targetRef="SubManualCheck" />
+    <bpmn:sequenceFlow id="FlowManualBackToFraudGw" sourceRef="SubManualCheck" targetRef="GwFraud" />
+    <bpmn:sequenceFlow id="FlowTransferToTransferCheck" sourceRef="TaskTransfer" targetRef="GwTransferCheck" />
+    <bpmn:sequenceFlow id="FlowTransferOkComplete" name="ok" sourceRef="GwTransferCheck" targetRef="TaskComplete">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=transferOk = true</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="FlowTransferFailReturn" name="failed" sourceRef="GwTransferCheck" targetRef="TaskReturnFunds" />
+    <bpmn:sequenceFlow id="FlowCompleteToNotify" sourceRef="TaskComplete" targetRef="TaskNotifyCompleted" />
+    <bpmn:sequenceFlow id="FlowNotifyCompletedEnd" sourceRef="TaskNotifyCompleted" targetRef="EndCompleted" />
+    <bpmn:sequenceFlow id="FlowReturnToFinishTransferFail" sourceRef="TaskReturnFunds" targetRef="TaskFinishTransferFail" />
+    <bpmn:sequenceFlow id="FlowFinishTransferFailNotify" sourceRef="TaskFinishTransferFail" targetRef="TaskNotifyTransferFail" />
+    <bpmn:sequenceFlow id="FlowNotifyTransferFailEnd" sourceRef="TaskNotifyTransferFail" targetRef="EndCanceledTransferFail" />
+    <bpmn:sequenceFlow id="FlowNotifySecurityToRelease" sourceRef="TaskNotifySecurity" targetRef="TaskReleaseFundsFraud" />
+    <bpmn:sequenceFlow id="FlowReleaseFraudToFinish" sourceRef="TaskReleaseFundsFraud" targetRef="TaskFinishFraud" />
+    <bpmn:sequenceFlow id="FlowFinishFraudNotify" sourceRef="TaskFinishFraud" targetRef="TaskNotifyFraudCancel" />
+    <bpmn:sequenceFlow id="FlowNotifyFraudCancelEnd" sourceRef="TaskNotifyFraudCancel" targetRef="EndCanceledFraud" />
+    <bpmn:sequenceFlow id="FlowCancelHoldToRelease" sourceRef="BoundaryCancelHold" targetRef="TaskReleaseFundsCancel" />
+    <bpmn:sequenceFlow id="FlowCancelReleaseToFinish" sourceRef="TaskReleaseFundsCancel" targetRef="TaskFinishCancel" />
+    <bpmn:sequenceFlow id="FlowCancelFinishNotify" sourceRef="TaskFinishCancel" targetRef="TaskNotifyCancelHold" />
+    <bpmn:sequenceFlow id="FlowCancelNotifyEnd" sourceRef="TaskNotifyCancelHold" targetRef="EndCanceledCancelHold" />
+    <bpmn:sequenceFlow id="FlowTimeoutToTransfer" sourceRef="BoundaryTimeout" targetRef="TaskTransfer" />
+    </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_PaymentSaga">
+    <bpmndi:BPMNPlane id="BPMNPlane_PaymentSaga" bpmnElement="PaymentSaga">
+      <bpmndi:BPMNShape id="GwHoldCheck_di" bpmnElement="GwHoldCheck" isMarkerVisible="true">
+        <dc:Bounds x="690" y="340" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="694" y="390" width="42" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GwFraud_di" bpmnElement="GwFraud" isMarkerVisible="true">
+        <dc:Bounds x="990" y="340" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="904.5" y="358" width="75" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndCanceledTransferFail_di" bpmnElement="EndCanceledTransferFail">
+        <dc:Bounds x="1990" y="282" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1978" y="318" width="60" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TaskReleaseFundsCancel_di" bpmnElement="TaskReleaseFundsCancel">
+        <dc:Bounds x="440" y="700" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TaskFinishCancel_di" bpmnElement="TaskFinishCancel">
+        <dc:Bounds x="650" y="700" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TaskNotifyCancelHold_di" bpmnElement="TaskNotifyCancelHold">
+        <dc:Bounds x="880" y="700" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_1gkgu2j_di" bpmnElement="BoundaryCancelHold">
+        <dc:Bounds x="302" y="722" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="279" y="758" width="82" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TaskHoldFunds_di" bpmnElement="TaskHoldFunds">
+        <dc:Bounds x="510" y="339" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TaskCreatePayment_di" bpmnElement="TaskCreatePayment">
+        <dc:Bounds x="340" y="339" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="StartEventCreatePayment_di" bpmnElement="StartEventCreatePayment">
+        <dc:Bounds x="182" y="361" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="160" y="397" width="80" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TaskNotifyHoldFail_di" bpmnElement="TaskNotifyHoldFail">
+        <dc:Bounds x="635" y="500" width="130" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndHoldFailed_di" bpmnElement="EndHoldFailed">
+        <dc:Bounds x="890" y="522" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="889" y="558" width="38" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TaskAntifraudAuto_di" bpmnElement="TaskAntifraudAuto">
+        <dc:Bounds x="810" y="325" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndCanceledCancelHold_di" bpmnElement="EndCanceledCancelHold">
+        <dc:Bounds x="1982" y="722" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1970" y="758" width="60" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TaskTransfer_di" bpmnElement="TaskTransfer">
+        <dc:Bounds x="965" y="90" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GwTransferCheck_di" bpmnElement="GwTransferCheck" isMarkerVisible="true">
+        <dc:Bounds x="1315" y="105" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1310" y="81" width="59" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndCompleted_di" bpmnElement="EndCompleted">
+        <dc:Bounds x="1990" y="112" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1974" y="148" width="69" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TaskReturnFunds_di" bpmnElement="TaskReturnFunds">
+        <dc:Bounds x="1425" y="255" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TaskNotifyTransferFail_di" bpmnElement="TaskNotifyTransferFail">
+        <dc:Bounds x="1805" y="260" width="130" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TaskComplete_di" bpmnElement="TaskComplete">
+        <dc:Bounds x="1430" y="90" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TaskFinishTransferFail_di" bpmnElement="TaskFinishTransferFail">
+        <dc:Bounds x="1605" y="260" width="130" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TaskNotifyCompleted_di" bpmnElement="TaskNotifyCompleted">
+        <dc:Bounds x="1600" y="90" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TaskNotifySecurity_di" bpmnElement="TaskNotifySecurity">
+        <dc:Bounds x="990" y="590" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TaskReleaseFundsFraud_di" bpmnElement="TaskReleaseFundsFraud">
+        <dc:Bounds x="1295" y="590" width="110" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TaskFinishFraud_di" bpmnElement="TaskFinishFraud">
+        <dc:Bounds x="1495" y="590" width="130" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TaskNotifyFraudCancel_di" bpmnElement="TaskNotifyFraudCancel">
+        <dc:Bounds x="1710" y="590" width="130" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndCanceledFraud_di" bpmnElement="EndCanceledFraud">
+        <dc:Bounds x="1990" y="612" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1978" y="648" width="60" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="SubManualCheck_di" bpmnElement="SubManualCheck" isExpanded="true">
+        <dc:Bounds x="1140" y="360" width="355" height="190" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TaskAntifraudManual_di" bpmnElement="TaskAntifraudManual">
+        <dc:Bounds x="1218" y="437" width="112" height="60" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="SubManualEnd_di" bpmnElement="SubManualEnd">
+        <dc:Bounds x="1412" y="449" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="SubManualStart_di" bpmnElement="SubManualStart">
+        <dc:Bounds x="1160" y="439" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="FlowSubManualStartToTask_di" bpmnElement="FlowSubManualStartToTask">
+        <di:waypoint x="1196" y="459" />
+        <di:waypoint x="1218" y="459" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowSubManualTaskToEnd_di" bpmnElement="FlowSubManualTaskToEnd">
+        <di:waypoint x="1330" y="467" />
+        <di:waypoint x="1412" y="466" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="BoundaryTimeout_di" bpmnElement="BoundaryTimeout">
+        <dc:Bounds x="1212" y="342" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1190" y="304.5" width="79" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="FlowHoldToHoldCheck_di" bpmnElement="FlowHoldToHoldCheck">
+        <di:waypoint x="610" y="370" />
+        <di:waypoint x="695" y="370" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowHoldCheckToAntifraud_di" bpmnElement="FlowHoldCheckToAntifraud">
+        <di:waypoint x="735" y="370" />
+        <di:waypoint x="810" y="370" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="770" y="346" width="12" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowHoldFailNotify_di" bpmnElement="FlowHoldFailNotify">
+        <di:waypoint x="705" y="380" />
+        <di:waypoint x="705" y="500" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="699" y="414" width="27" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowAntifraudToFraudGw_di" bpmnElement="FlowAntifraudToFraudGw">
+        <di:waypoint x="910" y="370" />
+        <di:waypoint x="995" y="370" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowManualBackToFraudGw_di" bpmnElement="FlowManualBackToFraudGw">
+        <di:waypoint x="1140" y="375" />
+        <di:waypoint x="1030" y="375" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowFraudAllow_di" bpmnElement="FlowFraudAllow">
+        <di:waypoint x="1015" y="340" />
+        <di:waypoint x="1015" y="170" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="981" y="239" width="39" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowFraudBlock_di" bpmnElement="FlowFraudBlock">
+        <di:waypoint x="1015" y="390" />
+        <di:waypoint x="1015" y="590" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="996" y="471" width="38" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowFraudManual_di" bpmnElement="FlowFraudManual">
+        <di:waypoint x="1036" y="369" />
+        <di:waypoint x="1140" y="369" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1069" y="344" width="46" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowNotifyTransferFailEnd_di" bpmnElement="FlowNotifyTransferFailEnd">
+        <di:waypoint x="1935" y="300" />
+        <di:waypoint x="1990" y="300" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowCancelHoldToRelease_di" bpmnElement="FlowCancelHoldToRelease">
+        <di:waypoint x="338" y="740" />
+        <di:waypoint x="440" y="740" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowCancelReleaseToFinish_di" bpmnElement="FlowCancelReleaseToFinish">
+        <di:waypoint x="560" y="740" />
+        <di:waypoint x="650" y="740" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowCancelFinishNotify_di" bpmnElement="FlowCancelFinishNotify">
+        <di:waypoint x="770" y="740" />
+        <di:waypoint x="880" y="740" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowCancelNotifyEnd_di" bpmnElement="FlowCancelNotifyEnd">
+        <di:waypoint x="1020" y="740" />
+        <di:waypoint x="1982" y="740" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowCreateToHold_di" bpmnElement="FlowCreateToHold">
+        <di:waypoint x="440" y="379" />
+        <di:waypoint x="510" y="379" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowStartToCreate_di" bpmnElement="FlowStartToCreate">
+        <di:waypoint x="218" y="382" />
+        <di:waypoint x="340" y="380" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowHoldFailNotifyEnd_di" bpmnElement="FlowHoldFailNotifyEnd">
+        <di:waypoint x="765" y="540" />
+        <di:waypoint x="890" y="540" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowTimeoutToTransfer_di" bpmnElement="FlowTimeoutToTransfer">
+        <di:waypoint x="1230" y="342" />
+        <di:waypoint x="1230" y="200" />
+        <di:waypoint x="1015" y="200" />
+        <di:waypoint x="1015" y="170" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowTransferToTransferCheck_di" bpmnElement="FlowTransferToTransferCheck">
+        <di:waypoint x="1065" y="130" />
+        <di:waypoint x="1315" y="130" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowTransferOkComplete_di" bpmnElement="FlowTransferOkComplete">
+        <di:waypoint x="1365" y="130" />
+        <di:waypoint x="1430" y="130" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1375" y="106" width="12" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowTransferFailReturn_di" bpmnElement="FlowTransferFailReturn">
+        <di:waypoint x="1340" y="155" />
+        <di:waypoint x="1340" y="295" />
+        <di:waypoint x="1425" y="295" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1342" y="212" width="27" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowNotifyCompletedEnd_di" bpmnElement="FlowNotifyCompletedEnd">
+        <di:waypoint x="1740" y="130" />
+        <di:waypoint x="1990" y="130" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowReturnToFinishTransferFail_di" bpmnElement="FlowReturnToFinishTransferFail">
+        <di:waypoint x="1535" y="299" />
+        <di:waypoint x="1605" y="299" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowFinishTransferFailNotify_di" bpmnElement="FlowFinishTransferFailNotify">
+        <di:waypoint x="1735" y="295" />
+        <di:waypoint x="1805" y="295" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowCompleteToNotify_di" bpmnElement="FlowCompleteToNotify">
+        <di:waypoint x="1530" y="130" />
+        <di:waypoint x="1600" y="130" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowNotifySecurityToRelease_di" bpmnElement="FlowNotifySecurityToRelease">
+        <di:waypoint x="1130" y="630" />
+        <di:waypoint x="1295" y="630" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowReleaseFraudToFinish_di" bpmnElement="FlowReleaseFraudToFinish">
+        <di:waypoint x="1405" y="630" />
+        <di:waypoint x="1495" y="630" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowFinishFraudNotify_di" bpmnElement="FlowFinishFraudNotify">
+        <di:waypoint x="1625" y="630" />
+        <di:waypoint x="1710" y="630" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowNotifyFraudCancelEnd_di" bpmnElement="FlowNotifyFraudCancelEnd">
+        <di:waypoint x="1840" y="630" />
+        <di:waypoint x="1990" y="630" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

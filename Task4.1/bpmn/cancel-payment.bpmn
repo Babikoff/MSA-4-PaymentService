@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
+  xmlns:modeler="http://camunda.org/schema/modeler/1.0"
+  id="Definitions_CancelPayment"
+  targetNamespace="http://org.orchestrpay/cancel-payment"
+  exporter="Camunda Modeler" exporterVersion="5.31.0"
+  modeler:executionPlatform="Camunda Cloud"
+  modeler:executionPlatformVersion="8.5.0">
+
+  <bpmn:message id="MessageCancelPayment" name="CANCEL_PAYMENT" />
+
+  <bpmn:process id="CancelPayment" name="Cancel Payment (Refund)" isExecutable="true">
+
+    <bpmn:startEvent id="StartEventCancelPayment" name="CANCEL_PAYMENT">
+      <bpmn:extensionElements>
+        <zeebe:subscription correlationKey="=paymentId" />
+      </bpmn:extensionElements>
+      <bpmn:outgoing>FlowCancelStartToReturn</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MsgCancelPaymentDef" messageRef="MessageCancelPayment" />
+    </bpmn:startEvent>
+
+    <bpmn:serviceTask id="TaskReturnFunds" name="RETURN_FUNDS">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="RETURN_FUNDS" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>FlowCancelStartToReturn</bpmn:incoming>
+      <bpmn:outgoing>FlowReturnToFinish</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="TaskFinishProcess" name="FINISH_PAYMENT_PROCESS">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="FINISH_PAYMENT_PROCESS" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>FlowReturnToFinish</bpmn:incoming>
+      <bpmn:outgoing>FlowFinishToNotify</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="TaskNotifyUserCancel" name="SEND_NOTIFICATION_TO_USER">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="SEND_NOTIFICATION_TO_USER" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>FlowFinishToNotify</bpmn:incoming>
+      <bpmn:outgoing>FlowNotifyCancelEnd</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="EndCancelPayment" name="CANCELED">
+      <bpmn:incoming>FlowNotifyCancelEnd</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="FlowCancelStartToReturn" sourceRef="StartEventCancelPayment" targetRef="TaskReturnFunds" />
+    <bpmn:sequenceFlow id="FlowReturnToFinish" sourceRef="TaskReturnFunds" targetRef="TaskFinishProcess" />
+    <bpmn:sequenceFlow id="FlowFinishToNotify" sourceRef="TaskFinishProcess" targetRef="TaskNotifyUserCancel" />
+    <bpmn:sequenceFlow id="FlowNotifyCancelEnd" sourceRef="TaskNotifyUserCancel" targetRef="EndCancelPayment" />
+  </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_CancelPayment">
+    <bpmndi:BPMNPlane id="BPMNPlane_CancelPayment" bpmnElement="CancelPayment">
+      <bpmndi:BPMNShape id="StartEventCancelPayment_di" bpmnElement="StartEventCancelPayment">
+        <dc:Bounds x="80" y="102" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TaskReturnFunds_di" bpmnElement="TaskReturnFunds">
+        <dc:Bounds x="180" y="82" width="120" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TaskFinishProcess_di" bpmnElement="TaskFinishProcess">
+        <dc:Bounds x="360" y="82" width="140" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TaskNotifyUserCancel_di" bpmnElement="TaskNotifyUserCancel">
+        <dc:Bounds x="560" y="82" width="150" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndCancelPayment_di" bpmnElement="EndCancelPayment">
+        <dc:Bounds x="780" y="104" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="FlowCancelStartToReturn_di" bpmnElement="FlowCancelStartToReturn">
+        <di:waypoint x="116" y="120" /><di:waypoint x="180" y="122" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowReturnToFinish_di" bpmnElement="FlowReturnToFinish">
+        <di:waypoint x="300" y="122" /><di:waypoint x="360" y="122" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowFinishToNotify_di" bpmnElement="FlowFinishToNotify">
+        <di:waypoint x="500" y="122" /><di:waypoint x="560" y="122" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="FlowNotifyCancelEnd_di" bpmnElement="FlowNotifyCancelEnd">
+        <di:waypoint x="710" y="122" /><di:waypoint x="780" y="122" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
